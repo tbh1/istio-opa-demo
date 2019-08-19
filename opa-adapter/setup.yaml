@@ -1,0 +1,61 @@
+apiVersion: "config.istio.io/v1alpha2"
+kind: authorization
+metadata:
+ name: opa-auth
+ namespace: istio-system
+spec:
+ subject:
+   user: source.uid | ""
+ action:
+   namespace: destination.namespace | "default"
+   service: destination.service | ""
+   method: request.method | ""
+   path: request.path | ""
+
+---
+
+apiVersion: "config.istio.io/v1alpha2"
+kind: opa
+metadata:
+ name: opa-auth
+ namespace: istio-system
+spec:
+  policy:
+   - |+
+      package mixerauthz
+      policy = [
+        {
+          "rule": {
+            "verbs": [
+              "storage.buckets.get"
+            ],
+            "users": [
+              "bucket-admins"
+            ]
+          }
+        }
+      ]
+
+      default allow = false
+
+      allow = true {
+        rule = policy[_].rule
+        input.subject.user = rule.users[_]
+        input.action.method = rule.verbs[_]
+      }
+  checkMethod: "data.mixerauthz.allow"
+  failClose: true
+
+---
+
+apiVersion: "config.istio.io/v1alpha2"
+kind: rule
+metadata:
+  name: opa-auth
+  namespace: istio-system
+spec:
+  match: request.headers["enforce-auth"]=="true"
+  actions:
+  - handler: opa-auth.opa.istio-system
+    instances:
+    - opa-auth.authorization.istio-system
